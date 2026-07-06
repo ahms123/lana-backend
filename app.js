@@ -36,6 +36,7 @@ app.use(express.json());
 // extra packages
 const connectDB = require("./db/connect");
 const { migrateWalletAddressIndex } = require("./db/migrateWalletIndexes");
+const { seedTasks } = require("./db/seedTasks");
 
 // routes
 app.get("/", (req, res) => {
@@ -66,6 +67,7 @@ const start = async () => {
 
     await connectDB(process.env.MONGO_URI);
     await migrateWalletAddressIndex();
+    await seedTasks();
 
     const port = process.env.PORT || 3000;
 

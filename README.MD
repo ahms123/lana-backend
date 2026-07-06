@@ -22,7 +22,8 @@ npm install && npm start
 | `/api/v1/auth` | Per-route | Live (except logout = Bearer required) |
 | `/api/v1/me` | Router-level JWT | Live |
 | `/api/v1/wallet` | Router-level JWT | Live (`GET /`, `POST /link`, `DELETE /link`) |
-| `/api/v1/tasks`, `/frens`, `/earn`, `/claim` | Router-level JWT | Stub `501` until feature tickets |
+| `/api/v1/tasks` | Router-level JWT | Live (`GET /`, `POST /check-in`, `POST /:taskId/start`) |
+| `/api/v1/frens`, `/earn`, `/claim` | Router-level JWT | Stub `501` until feature tickets |
 
 #### User Model
 
