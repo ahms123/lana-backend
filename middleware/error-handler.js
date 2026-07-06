@@ -9,10 +9,12 @@ function duplicateFieldError(err) {
   const codes = {
     email: "DUPLICATE_EMAIL",
     name: "DUPLICATE_NAME",
+    walletAddress: "DUPLICATE_WALLET_ADDRESS",
   };
   const messages = {
     email: "Email is already registered",
     name: "Username is already taken",
+    walletAddress: "This wallet address is already linked to another account",
   };
   return {
     statusCode: StatusCodes.CONFLICT,
@@ -81,6 +83,7 @@ const errorHandlerMiddleware = (err, req, res, next) => {
   if (!code && statusCode === StatusCodes.BAD_REQUEST) code = "BAD_REQUEST";
   if (!code && statusCode === StatusCodes.UNAUTHORIZED) code = "UNAUTHORIZED";
   if (!code && statusCode === StatusCodes.NOT_FOUND) code = "NOT_FOUND";
+  if (!code && statusCode === StatusCodes.CONFLICT) code = "CONFLICT";
 
   return sendError(res, statusCode, { message, code, errors });
 };

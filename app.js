@@ -35,6 +35,7 @@ const errorHandlerMiddleware = require("./middleware/error-handler");
 app.use(express.json());
 // extra packages
 const connectDB = require("./db/connect");
+const { migrateWalletAddressIndex } = require("./db/migrateWalletIndexes");
 
 // routes
 app.get("/", (req, res) => {
@@ -64,6 +65,7 @@ const start = async () => {
     }
 
     await connectDB(process.env.MONGO_URI);
+    await migrateWalletAddressIndex();
 
     const port = process.env.PORT || 3000;
 
