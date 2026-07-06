@@ -126,41 +126,48 @@ async function checkIn(userId) {
     };
   }
 
-  const updated = await UserCheckIn.findOneAndUpdate(
-    { userId: id, lastCheckInDay: { $ne: todayKey } },
-    [
-      {
-        $set: {
-          lastCheckInDay: todayKey,
-          totalCheckIns: { $add: [{ $ifNull: ["$totalCheckIns", 0] }, 1] },
-          currentStreak: {
-            $cond: [
-              { $eq: ["$lastCheckInDay", yesterdayKey] },
-              { $add: [{ $ifNull: ["$currentStreak", 0] }, 1] },
-              1,
-            ],
+  let updated;
+  try {
+    updated = await UserCheckIn.findOneAndUpdate(
+      { userId: id, lastCheckInDay: { $ne: todayKey } },
+      [
+        {
+          $set: {
+            lastCheckInDay: todayKey,
+            totalCheckIns: { $add: [{ $ifNull: ["$totalCheckIns", 0] }, 1] },
+            currentStreak: {
+              $cond: [
+                { $eq: ["$lastCheckInDay", yesterdayKey] },
+                { $add: [{ $ifNull: ["$currentStreak", 0] }, 1] },
+                1,
+              ],
+            },
           },
         },
-      },
-      {
-        $set: {
-          longestStreak: {
-            $max: [
-              { $ifNull: ["$longestStreak", 0] },
-              "$currentStreak",
-            ],
+        {
+          $set: {
+            longestStreak: {
+              $max: [
+                { $ifNull: ["$longestStreak", 0] },
+                "$currentStreak",
+              ],
+            },
           },
         },
-      },
-    ],
-    { upsert: true, new: true }
-  );
+      ],
+      { upsert: true, new: true }
+    );
+  } catch (err) {
+    // Concurrent first check-in: two upserts race on unique userId index.
+    if (err.code !== 11000) throw err;
+    updated = null;
+  }
 
   if (!updated) {
     const current = await UserCheckIn.findOne({ userId: id });
     return {
       checkIn: toPublicCheckIn(current, todayKey),
-      alreadyCheckedIn: true,
+      alreadyCheckedIn: current?.lastCheckInDay === todayKey,
     };
   }
 
