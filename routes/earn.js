@@ -1,7 +1,8 @@
 const createProtectedRouter = require("./createProtectedRouter");
-const { notImplemented } = require("../controllers/stub");
+const { listActions } = require("../controllers/earn");
 
 const router = createProtectedRouter();
-router.all("*", notImplemented);
+
+router.get("/actions", listActions);
 
 module.exports = router;
