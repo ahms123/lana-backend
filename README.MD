@@ -20,12 +20,12 @@ npm install && npm start
 | Mount | Auth | Status |
 |-------|------|--------|
 | `/api/v1/auth` | Per-route | Live (except logout = Bearer required) |
-| `/api/v1/me` | Router-level JWT | Live |
+| `/api/v1/me` | Router-level JWT | Live (`GET /`, `GET /stats`, `PATCH /`) |
 | `/api/v1/wallet` | Router-level JWT | Live (`GET /`, `POST /link`, `DELETE /link`) |
 | `/api/v1/tasks` | Router-level JWT | Live (`GET /`, `POST /check-in`, `POST /:taskId/start`) |
 | `/api/v1/frens` | Router-level JWT | Live (`GET /`) |
 | `/api/v1/earn` | Router-level JWT | Live (`GET /actions`) |
-| `/api/v1/claim` | Router-level JWT | Stub `501` until feature tickets |
+| `/api/v1/claim` | Router-level JWT | Live (`GET /`, `POST /`) |
 
 #### User Model
 
@@ -86,3 +86,16 @@ All API errors use a standard JSON envelope:
 - `errors` — optional per-field list (validation, duplicates)
 - `code` — machine-readable (`DUPLICATE_EMAIL`, `VALIDATION_ERROR`, `UNAUTHORIZED`, etc.)
 - Duplicate register: **409** with `DUPLICATE_EMAIL` or `DUPLICATE_NAME`
+
+#### Claim / rewards
+
+- `GET /api/v1/claim` — `{ canClaim, lastClaimAt, nextClaimAt, cooldownHours, pointsPerClaim }`
+- `POST /api/v1/claim` — awards points when cooldown elapsed
+  - **200** — `{ success: true, points, nextClaimAt, totalPoints }`
+  - **429** — `{ success: false, code: "CLAIM_COOLDOWN", message, nextClaimAt }`
+- Cooldown and points configurable via `CLAIM_COOLDOWN_HOURS` (default 8) and `CLAIM_POINTS` (default 10)
+- Race-safe: conditional `findOneAndUpdate` on `WalletAccount.lastClaimAt`
+
+#### Me stats
+
+- `GET /api/v1/me/stats` — `{ rank, score }` (score = `lanaPoints`, same source as Frens leaderboard)

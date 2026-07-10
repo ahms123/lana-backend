@@ -34,6 +34,10 @@ const WalletAccountSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
+    lastClaimAt: {
+      type: Date,
+      default: null,
+    },
   },
   { timestamps: true }
 );

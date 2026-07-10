@@ -1,3 +1,4 @@
+const WalletAccount = require("../models/WalletAccount");
 const walletService = require("./walletService");
 
 async function getScoreForUser(userId) {
@@ -5,4 +6,12 @@ async function getScoreForUser(userId) {
   return account.lanaPoints ?? 0;
 }
 
-module.exports = { getScoreForUser };
+async function getMyStats(userId) {
+  const score = await getScoreForUser(userId);
+  const higherCount = await WalletAccount.countDocuments({
+    lanaPoints: { $gt: score },
+  });
+  return { score, rank: higherCount + 1 };
+}
+
+module.exports = { getScoreForUser, getMyStats };

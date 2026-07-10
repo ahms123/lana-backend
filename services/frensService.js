@@ -43,11 +43,8 @@ async function buildLeaderboard(limit) {
 }
 
 async function getMyRank(userId) {
-  const myScore = await statsService.getScoreForUser(userId);
-  const higherCount = await WalletAccount.countDocuments({
-    lanaPoints: { $gt: myScore },
-  });
-  return { myScore, myRank: higherCount + 1 };
+  const { score, rank } = await statsService.getMyStats(userId);
+  return { myScore: score, myRank: rank };
 }
 
 async function buildInvitedList(inviterUserId) {

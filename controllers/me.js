@@ -2,6 +2,7 @@ const User = require("../models/User");
 const { StatusCodes } = require("http-status-codes");
 const { UnauthenticatedError } = require("../errors");
 const { toPublicUser } = require("../utils/publicUser");
+const statsService = require("../services/statsService");
 
 /**
  * GET /api/v1/me — current user profile (LANA-201).
@@ -32,4 +33,12 @@ const patchMe = async (req, res) => {
   res.status(StatusCodes.OK).json({ user: toPublicUser(user) });
 };
 
-module.exports = { getMe, patchMe };
+/**
+ * GET /api/v1/me/stats — rank and score for authenticated user.
+ */
+const getStats = async (req, res) => {
+  const { rank, score } = await statsService.getMyStats(req.user.userId);
+  res.status(StatusCodes.OK).json({ rank, score });
+};
+
+module.exports = { getMe, patchMe, getStats };
