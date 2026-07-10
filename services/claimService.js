@@ -85,8 +85,13 @@ async function claim(userId) {
   );
 
   if (!updated) {
-    const account = await WalletAccount.findOne({ userId: id });
-    const nextClaimAt = computeNextClaimAt(account?.lastClaimAt, cooldownMs);
+    let account = await WalletAccount.findOne({ userId: id });
+    if (!account) {
+      account = await walletService.getOrCreateForUser(userId);
+    }
+    const nextClaimAt =
+      computeNextClaimAt(account.lastClaimAt, cooldownMs) ??
+      new Date(now.getTime() + cooldownMs);
     return { ok: false, nextClaimAt };
   }
 

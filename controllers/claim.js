@@ -1,6 +1,10 @@
 const { StatusCodes } = require("http-status-codes");
 const claimService = require("../services/claimService");
 
+function toIso(date) {
+  return date ? date.toISOString() : null;
+}
+
 /**
  * GET /api/v1/claim — claim eligibility and cooldown for authenticated user.
  */
@@ -20,14 +24,14 @@ const postClaim = async (req, res) => {
       success: false,
       message: "Claim not available yet",
       code: "CLAIM_COOLDOWN",
-      nextClaimAt: result.nextClaimAt.toISOString(),
+      nextClaimAt: toIso(result.nextClaimAt),
     });
   }
 
   res.status(StatusCodes.OK).json({
     success: true,
     points: result.points,
-    nextClaimAt: result.nextClaimAt.toISOString(),
+    nextClaimAt: toIso(result.nextClaimAt),
     totalPoints: result.totalPoints,
   });
 };
