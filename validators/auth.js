@@ -15,6 +15,16 @@ const registerSchema = Joi.object({
     "any.required": "Please provide password",
   }),
   deviceId: Joi.string().trim().optional(),
+  referralCode: Joi.string()
+    .trim()
+    .lowercase()
+    .allow("")
+    .pattern(/^[a-z0-9_-]{6,16}$/)
+    .optional()
+    .messages({
+      "string.pattern.base":
+        "Invalid referral code. Leave the field empty if you don’t have one.",
+    }),
 }).unknown(false);
 
 module.exports = { registerSchema };

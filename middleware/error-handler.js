@@ -10,11 +10,13 @@ function duplicateFieldError(err) {
     email: "DUPLICATE_EMAIL",
     name: "DUPLICATE_NAME",
     walletAddress: "DUPLICATE_WALLET_ADDRESS",
+    referralCode: "DUPLICATE_REFERRAL_CODE",
   };
   const messages = {
     email: "Email is already registered",
     name: "Username is already taken",
     walletAddress: "This wallet address is already linked to another account",
+    referralCode: "Referral code conflict, please try again",
   };
   return {
     statusCode: StatusCodes.CONFLICT,

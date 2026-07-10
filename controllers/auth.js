@@ -9,6 +9,7 @@ const {
   NotFoundError,
 } = require("../errors");
 const refreshTokenService = require("../services/refreshTokenService");
+const referralService = require("../services/referralService");
 const { toPublicUser } = require("../utils/publicUser");
 
 const RESET_TOKEN_PURPOSE = "password-reset";
@@ -63,9 +64,15 @@ async function buildAuthResponse(user, deviceId = null) {
 
 const register = async (req, res) => {
   const deviceId = req.body.deviceId || null;
-  const { name, email, password } = req.body;
+  const { name, email, password, referralCode } = req.body;
+
+  // Validate referral before creating the user (optional field; invalid → 400).
+  await referralService.assertReferralCodeValidIfPresent(referralCode);
 
   const user = await User.create({ name, email, password });
+  await referralService.ensureReferralCode(user._id);
+  await referralService.attributeReferralOnRegister(user._id, referralCode);
+
   const body = await buildAuthResponse(user, deviceId);
   res.status(StatusCodes.CREATED).json(body);
 };
