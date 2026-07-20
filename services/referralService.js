@@ -124,17 +124,27 @@ async function assertReferralCodeValidIfPresent(referralCode) {
   return inviter;
 }
 
+/**
+ * Credit inviter's WalletAccount.lanaPoints (in-app score / leaderboard points).
+ * Not on-chain wallet balance — same points used by claim, tasks, and frens rank.
+ */
 async function creditInviterPoints(inviterUserId, points) {
   if (!points || points <= 0) return;
   await walletService.getOrCreateForUser(inviterUserId);
-  await WalletAccount.findOneAndUpdate(
+  const updated = await WalletAccount.findOneAndUpdate(
     { userId: inviterUserId },
-    { $inc: { lanaPoints: points } }
+    { $inc: { lanaPoints: points } },
+    { new: true }
   );
+  if (!updated) {
+    throw new Error("Failed to credit inviter lanaPoints");
+  }
 }
 
 /**
  * One-time signup bonus to inviter when a referral row is created.
+ * Marks Referral first (race-safe), then credits wallet; rolls back mark if credit fails
+ * so a later retry can still award the bonus.
  */
 async function awardSignupBonus(referral) {
   const bonus = getSignupBonusPoints();
@@ -154,7 +164,19 @@ async function awardSignupBonus(referral) {
 
   if (!updated) return null;
 
-  await creditInviterPoints(updated.inviterUserId, bonus);
+  try {
+    await creditInviterPoints(updated.inviterUserId, bonus);
+  } catch (err) {
+    await Referral.findOneAndUpdate(
+      { _id: referral._id, signupBonusAwarded: true },
+      {
+        $set: { signupBonusAwarded: false },
+        $inc: { pointsEarnedFromInvitee: -bonus },
+      }
+    );
+    throw err;
+  }
+
   return { points: bonus, inviterUserId: updated.inviterUserId };
 }
 
@@ -198,12 +220,18 @@ async function attributeReferralOnRegister(inviteeUserId, referralCode) {
     throw err;
   }
 
-  await awardSignupBonus(referral);
+  try {
+    await awardSignupBonus(referral);
+  } catch (err) {
+    // Referral row exists; bonus mark is rolled back so it can be retried later.
+    console.warn("Referral signup bonus failed:", err.message || err);
+  }
   return referral;
 }
 
 /**
  * When an invitee successfully claims, credit inviter with a % of those points.
+ * Updates Referral tracking first, then credits wallet; rolls back tracking if credit fails.
  */
 async function awardClaimShareToInviter(inviteeUserId, claimPoints) {
   const share = computeClaimSharePoints(claimPoints);
@@ -218,7 +246,16 @@ async function awardClaimShareToInviter(inviteeUserId, claimPoints) {
 
   if (!referral) return null;
 
-  await creditInviterPoints(referral.inviterUserId, share);
+  try {
+    await creditInviterPoints(referral.inviterUserId, share);
+  } catch (err) {
+    await Referral.findOneAndUpdate(
+      { _id: referral._id },
+      { $inc: { pointsEarnedFromInvitee: -share } }
+    );
+    throw err;
+  }
+
   return {
     points: share,
     inviterUserId: referral.inviterUserId.toString(),
