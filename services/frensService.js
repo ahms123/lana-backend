@@ -20,26 +20,10 @@ function toPublicFrenUser(user, score, rank = null) {
 }
 
 async function buildLeaderboard(limit) {
-  const wallets = await WalletAccount.find({})
-    .sort({ lanaPoints: -1, userId: 1 })
-    .limit(limit)
-    .select("userId lanaPoints");
-
-  if (wallets.length === 0) {
-    return [];
-  }
-
-  const userIds = wallets.map((w) => w.userId);
-  const users = await User.find({ _id: { $in: userIds } }).select("name");
-  const userMap = new Map(users.map((u) => [u._id.toString(), u]));
-
-  return wallets
-    .map((wallet, index) => {
-      const user = userMap.get(wallet.userId.toString());
-      if (!user) return null;
-      return toPublicFrenUser(user, wallet.lanaPoints ?? 0, index + 1);
-    })
-    .filter(Boolean);
+  const rows = await statsService.getLeaderboard(limit);
+  return rows.map((row) =>
+    toPublicFrenUser({ _id: row.id, name: row.name }, row.score, row.rank)
+  );
 }
 
 async function getMyRank(userId) {
@@ -51,7 +35,7 @@ async function buildInvitedList(inviterUserId) {
   const id = new mongoose.Types.ObjectId(inviterUserId);
   const referrals = await Referral.find({ inviterUserId: id })
     .sort({ createdAt: -1 })
-    .select("inviteeUserId");
+    .select("inviteeUserId pointsEarnedFromInvitee");
 
   if (referrals.length === 0) {
     return [];
@@ -75,7 +59,13 @@ async function buildInvitedList(inviterUserId) {
       const key = referral.inviteeUserId.toString();
       const user = userMap.get(key);
       if (!user) return null;
-      return toPublicFrenUser(user, walletMap.get(key) ?? 0, null);
+      return {
+        id: user._id.toString(),
+        name: user.name,
+        score: walletMap.get(key) ?? 0,
+        rank: null,
+        pointsEarned: referral.pointsEarnedFromInvitee ?? 0,
+      };
     })
     .filter(Boolean);
 }

@@ -2,6 +2,8 @@ const mongoose = require("mongoose");
 const Task = require("../models/Task");
 const UserTaskProgress = require("../models/UserTaskProgress");
 const UserCheckIn = require("../models/UserCheckIn");
+const WalletAccount = require("../models/WalletAccount");
+const walletService = require("./walletService");
 const { NotFoundError } = require("../errors");
 
 /** UTC calendar day key YYYY-MM-DD */
@@ -13,6 +15,23 @@ function getYesterdayKeyUTC(date = new Date()) {
   const d = new Date(date);
   d.setUTCDate(d.getUTCDate() - 1);
   return getTodayKeyUTC(d);
+}
+
+/**
+ * Points awarded on the next successful check-in (no cap).
+ * Equals currentStreak + 1 if yesterday was checked, else 1. 0 if already today.
+ */
+function computeNextCheckInPoints(
+  record,
+  todayKey = getTodayKeyUTC(),
+  yesterdayKey = getYesterdayKeyUTC()
+) {
+  if (!record) return 1;
+  if (record.lastCheckInDay === todayKey) return 0;
+  if (record.lastCheckInDay === yesterdayKey) {
+    return (record.currentStreak ?? 0) + 1;
+  }
+  return 1;
 }
 
 function toPublicTask(task, progress) {
@@ -40,6 +59,7 @@ function toPublicCheckIn(record, todayKey = getTodayKeyUTC()) {
       longestStreak: 0,
       lastCheckInDay: null,
       totalCheckIns: 0,
+      nextCheckInPoints: 1,
     };
   }
 
@@ -51,13 +71,34 @@ function toPublicCheckIn(record, todayKey = getTodayKeyUTC()) {
     longestStreak: record.longestStreak ?? 0,
     lastCheckInDay: record.lastCheckInDay ?? null,
     totalCheckIns: record.totalCheckIns ?? 0,
+    nextCheckInPoints: computeNextCheckInPoints(record, todayKey),
   };
+}
+
+async function getLanaPointsTotal(userId) {
+  const account = await WalletAccount.findOne({
+    userId: new mongoose.Types.ObjectId(userId),
+  }).select("lanaPoints");
+  return account?.lanaPoints ?? 0;
+}
+
+async function awardCheckInPoints(userId, points) {
+  await walletService.getOrCreateForUser(userId);
+  const updated = await WalletAccount.findOneAndUpdate(
+    { userId: new mongoose.Types.ObjectId(userId) },
+    { $inc: { lanaPoints: points } },
+    { new: true }
+  );
+  return updated?.lanaPoints ?? points;
 }
 
 async function listForUser(userId) {
   const id = new mongoose.Types.ObjectId(userId);
   const [catalog, progressList, checkInRecord] = await Promise.all([
-    Task.find({ isActive: true }).sort({ sortOrder: 1, taskId: 1 }),
+    Task.find({
+      isActive: true,
+      externalUrl: { $type: "string", $ne: "" },
+    }).sort({ sortOrder: 1, taskId: 1 }),
     UserTaskProgress.find({ userId: id }),
     UserCheckIn.findOne({ userId: id }),
   ]);
@@ -65,51 +106,111 @@ async function listForUser(userId) {
   const progressMap = new Map(progressList.map((p) => [p.taskId, p]));
 
   return {
-    tasks: catalog.map((task) => toPublicTask(task, progressMap.get(task.taskId))),
+    tasks: catalog.map((task) =>
+      toPublicTask(task, progressMap.get(task.taskId))
+    ),
     checkIn: toPublicCheckIn(checkInRecord),
   };
 }
 
+/**
+ * Honor-system follow: clicking start opens the link (client) and completes the task.
+ * Awards rewardPoints once when transitioning to completed.
+ */
 async function startTask(userId, taskId) {
-  const task = await Task.findOne({ taskId, isActive: true });
+  const task = await Task.findOne({
+    taskId,
+    isActive: true,
+    externalUrl: { $type: "string", $ne: "" },
+  });
   if (!task) {
     throw new NotFoundError("Task not found", { code: "TASK_NOT_FOUND" });
   }
 
   const id = new mongoose.Types.ObjectId(userId);
-  let progress = await UserTaskProgress.findOne({ userId: id, taskId });
-  let alreadyStarted = Boolean(
-    progress &&
-      (progress.status === "started" || progress.status === "completed")
-  );
+  const now = new Date();
+  const reward = Math.max(0, task.rewardPoints ?? 0);
 
-  if (!progress) {
-    try {
-      progress = await UserTaskProgress.create({
+  const existing = await UserTaskProgress.findOne({ userId: id, taskId });
+  if (existing?.status === "completed") {
+    return {
+      task: toPublicTask(task, existing),
+      alreadyCompleted: true,
+      pointsAwarded: 0,
+      totalPoints: await getLanaPointsTotal(userId),
+    };
+  }
+
+  let progress;
+  try {
+    progress = await UserTaskProgress.findOneAndUpdate(
+      {
         userId: id,
         taskId,
-        status: "started",
-        startedAt: new Date(),
-      });
-      alreadyStarted = false;
-    } catch (err) {
-      if (err.code !== 11000) throw err;
-      progress = await UserTaskProgress.findOne({ userId: id, taskId });
-      alreadyStarted = Boolean(
-        progress &&
-          (progress.status === "started" || progress.status === "completed")
-      );
+        status: { $ne: "completed" },
+      },
+      {
+        $set: {
+          status: "completed",
+          completedAt: now,
+          startedAt: existing?.startedAt || now,
+        },
+        $setOnInsert: {
+          userId: id,
+          taskId,
+        },
+      },
+      { upsert: true, new: true }
+    );
+  } catch (err) {
+    if (err.code !== 11000) throw err;
+    progress = await UserTaskProgress.findOne({ userId: id, taskId });
+    if (progress?.status === "completed") {
+      return {
+        task: toPublicTask(task, progress),
+        alreadyCompleted: true,
+        pointsAwarded: 0,
+        totalPoints: await getLanaPointsTotal(userId),
+      };
     }
-  } else if (progress.status === "not_started") {
-    progress.status = "started";
-    progress.startedAt = progress.startedAt || new Date();
-    await progress.save();
-    alreadyStarted = false;
+    throw err;
+  }
+
+  // Re-check: another request may have completed first.
+  if (!progress || progress.status !== "completed") {
+    const current = await UserTaskProgress.findOne({ userId: id, taskId });
+    return {
+      task: toPublicTask(task, current),
+      alreadyCompleted: current?.status === "completed",
+      pointsAwarded: 0,
+      totalPoints: await getLanaPointsTotal(userId),
+    };
+  }
+
+  // Only award if this transition was from non-completed (existing was not completed).
+  let pointsAwarded = 0;
+  let totalPoints = await getLanaPointsTotal(userId);
+  if (!existing || existing.status !== "completed") {
+    // Guard double-award: only credit if completedAt matches this request window
+    // or use rewardPointsAwarded flag — simpler: check if we just set completed
+    // and existing wasn't completed. Concurrent losers hit alreadyCompleted above.
+    if (reward > 0) {
+      await walletService.getOrCreateForUser(userId);
+      const wallet = await WalletAccount.findOneAndUpdate(
+        { userId: id },
+        { $inc: { lanaPoints: reward } },
+        { new: true }
+      );
+      pointsAwarded = reward;
+      totalPoints = wallet?.lanaPoints ?? reward;
+    }
   }
 
   return {
     task: toPublicTask(task, progress),
-    alreadyStarted,
+    alreadyCompleted: false,
+    pointsAwarded,
+    totalPoints,
   };
 }
 
@@ -123,6 +224,8 @@ async function checkIn(userId) {
     return {
       checkIn: toPublicCheckIn(existing, todayKey),
       alreadyCheckedIn: true,
+      pointsAwarded: 0,
+      totalPoints: await getLanaPointsTotal(userId),
     };
   }
 
@@ -165,21 +268,31 @@ async function checkIn(userId) {
 
   if (!updated) {
     const current = await UserCheckIn.findOne({ userId: id });
+    const alreadyCheckedIn = current?.lastCheckInDay === todayKey;
     return {
       checkIn: toPublicCheckIn(current, todayKey),
-      alreadyCheckedIn: current?.lastCheckInDay === todayKey,
+      alreadyCheckedIn,
+      pointsAwarded: 0,
+      totalPoints: await getLanaPointsTotal(userId),
     };
   }
+
+  // Points = new streak length (no cap). Day 1 → 1, day 8 → 8, etc.
+  const pointsAwarded = Math.max(1, updated.currentStreak ?? 1);
+  const totalPoints = await awardCheckInPoints(userId, pointsAwarded);
 
   return {
     checkIn: toPublicCheckIn(updated, todayKey),
     alreadyCheckedIn: false,
+    pointsAwarded,
+    totalPoints,
   };
 }
 
 module.exports = {
   getTodayKeyUTC,
   getYesterdayKeyUTC,
+  computeNextCheckInPoints,
   toPublicTask,
   toPublicCheckIn,
   listForUser,

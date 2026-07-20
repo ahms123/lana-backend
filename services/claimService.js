@@ -1,6 +1,7 @@
 const mongoose = require("mongoose");
 const WalletAccount = require("../models/WalletAccount");
 const walletService = require("./walletService");
+const referralService = require("./referralService");
 
 function getCooldownHours() {
   const parsed = parseInt(process.env.CLAIM_COOLDOWN_HOURS, 10);
@@ -95,12 +96,24 @@ async function claim(userId) {
     return { ok: false, nextClaimAt };
   }
 
+  // Inviter earns a share of this claim when the claimer was referred.
+  let referralShare = null;
+  try {
+    referralShare = await referralService.awardClaimShareToInviter(
+      userId,
+      points
+    );
+  } catch (err) {
+    console.warn("Referral claim share failed:", err.message || err);
+  }
+
   const nextClaimAt = new Date(now.getTime() + cooldownMs);
   return {
     ok: true,
     points,
     nextClaimAt,
     totalPoints: updated.lanaPoints ?? 0,
+    referralShare,
   };
 }
 

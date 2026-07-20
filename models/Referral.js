@@ -21,6 +21,17 @@ const ReferralSchema = new mongoose.Schema(
       trim: true,
       lowercase: true,
     },
+    /** True once the one-time signup bonus was credited to the inviter. */
+    signupBonusAwarded: {
+      type: Boolean,
+      default: false,
+    },
+    /** Total points the inviter has earned from this invitee (signup + claim shares). */
+    pointsEarnedFromInvitee: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
   },
   { timestamps: true }
 );

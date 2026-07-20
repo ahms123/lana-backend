@@ -22,7 +22,7 @@ npm install && npm start
 | `/api/v1/auth` | Per-route | Live (except logout = Bearer required) |
 | `/api/v1/me` | Router-level JWT | Live (`GET /`, `GET /stats`, `PATCH /`) |
 | `/api/v1/wallet` | Router-level JWT | Live (`GET /`, `POST /link`, `DELETE /link`) |
-| `/api/v1/tasks` | Router-level JWT | Live (`GET /`, `POST /check-in`, `POST /:taskId/start`) |
+| `/api/v1/tasks` | Router-level JWT | Live (`GET /`, `POST /check-in`, `POST /:taskId/start`) — check-in awards streak points (no cap) |
 | `/api/v1/frens` | Router-level JWT | Live (`GET /`) |
 | `/api/v1/earn` | Router-level JWT | Live (`GET /actions`) |
 | `/api/v1/claim` | Router-level JWT | Live (`GET /`, `POST /`) |
@@ -96,6 +96,29 @@ All API errors use a standard JSON envelope:
 - Cooldown and points configurable via `CLAIM_COOLDOWN_HOURS` (default 8) and `CLAIM_POINTS` (default 10)
 - Race-safe: conditional `findOneAndUpdate` on `WalletAccount.lastClaimAt`
 
+#### Tasks / daily check-in
+
+- `GET /api/v1/tasks` — catalog + `checkIn` summary including `nextCheckInPoints`
+  - Only **active** tasks with a non-empty `externalUrl` are returned (empty social links stay hidden)
+- `POST /api/v1/tasks/check-in` — idempotent daily check-in (UTC day)
+  - New check-in: streak continues if yesterday, else resets to `1`
+  - Awards **points = new streak** (no cap): day 8 → +8, miss a day → +1
+  - **200** — `{ checkIn, alreadyCheckedIn, pointsAwarded, totalPoints }`
+  - Repeat same day: `alreadyCheckedIn: true`, `pointsAwarded: 0`
+- `POST /api/v1/tasks/:taskId/start` — honor-system follow
+  - Completes the task on click and awards `rewardPoints` once (default **5** per social task)
+  - Client opens `externalUrl` after success
+  - **200** — `{ task, alreadyCompleted, pointsAwarded, totalPoints }`
+- Telegram seeds: channel `https://t.me/lana_varse`, group `https://t.me/+Ld_0gZyNY-A0MmNk`
+
 #### Me stats
 
-- `GET /api/v1/me/stats` — `{ rank, score }` (score = `lanaPoints`, same source as Frens leaderboard)
+- `GET /api/v1/me/stats` — `{ rank, score }` (score = `lanaPoints`)
+- Rank is among **active users only** (wallets whose User still exists), sorted by `lanaPoints` desc then `userId` asc — same order as Frens leaderboard
+- After deleting users manually, orphan wallets no longer inflate rank; optional cleanup: `node db/cleanupOrphanUserData.js`
+
+#### Referral rewards
+
+- On signup with a valid referral code: inviter gets `REFERRAL_SIGNUP_BONUS` points once (default **10**)
+- When an invitee successfully claims: inviter gets `floor(claimPoints * REFERRAL_CLAIM_SHARE_PERCENT / 100)` (default **5%**)
+- `GET /api/v1/frens` `invited[]` includes `score` (invitee total points) and `pointsEarned` (points you got from them)
