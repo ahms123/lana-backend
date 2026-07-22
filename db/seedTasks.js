@@ -28,7 +28,7 @@ const DEFAULT_TASKS = [
     title: "Follow our YouTube",
     description: "Subscribe to our YouTube channel",
     sortOrder: 3,
-    externalUrl: "https://www.youtube.com/@LanaVarse",
+    externalUrl: "https://www.youtube.com/%40LanaVarse",
     rewardPoints: 5,
     isActive: true,
   },
