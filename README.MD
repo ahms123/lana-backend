@@ -109,7 +109,7 @@ All API errors use a standard JSON envelope:
   - Completes the task on click and awards `rewardPoints` once (default **5** per social task)
   - Client opens `externalUrl` after success
   - **200** — `{ task, alreadyCompleted, pointsAwarded, totalPoints }`
-- Telegram seeds: channel `https://t.me/lana_varse`, group `https://t.me/+Ld_0gZyNY-A0MmNk`
+- Social seeds: Telegram channel `https://t.me/lana_varse`, group `https://t.me/+Ld_0gZyNY-A0MmNk`, YouTube `https://www.youtube.com/@LanaVarse`, X `https://x.com/lanavarse`, Discord `https://discord.gg/9zpHdWA4E`
 
 #### Me stats
 
