@@ -38,6 +38,7 @@ const connectDB = require("./db/connect");
 const { migrateWalletAddressIndex } = require("./db/migrateWalletIndexes");
 const { seedTasks } = require("./db/seedTasks");
 const { seedEarnActions } = require("./db/seedEarnActions");
+const { startAutoClaimCheckInJobs } = require("./jobs/autoClaimCheckIn");
 
 // routes
 app.get("/", (req, res) => {
@@ -70,6 +71,8 @@ const start = async () => {
     await migrateWalletAddressIndex();
     await seedTasks();
     await seedEarnActions();
+
+    startAutoClaimCheckInJobs();
 
     const port = process.env.PORT || 3000;
 
